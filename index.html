@@ -3,15 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Custom Video Player — video.mp4</title>
+  <title>Video player — improved volume slider</title>
   <style>
     :root{
-      --bg:#0f1724;
-      --card:#0b1220;
+      --bg:#071027;
+      --panel:#0b1220;
       --accent:#60a5fa;
       --muted:#94a3b8;
       --glass: rgba(255,255,255,0.04);
-      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      --thumb-size:16px;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, Arial;
     }
     html,body{height:100%}
     body{
@@ -19,7 +20,7 @@
       display:flex;
       align-items:center;
       justify-content:center;
-      background:linear-gradient(180deg,#071029 0%, #071827 100%);
+      background: linear-gradient(180deg,#071029 0%, #071827 100%);
       color:#e6eef8;
       padding:24px;
     }
@@ -32,7 +33,6 @@
       overflow: hidden;
     }
 
-    /* video area */
     .video-wrap{
       position:relative;
       background:#000;
@@ -45,13 +45,14 @@
       background:#000;
     }
 
-    /* big center play overlay */
+    /* center big play */
     .big-play{
       position:absolute;
       inset:0;
       display:flex;
       align-items:center;
       justify-content:center;
+      pointer-events:auto;
     }
     .big-play .btn {
       background: linear-gradient(90deg, rgba(96,165,250,0.12), rgba(96,165,250,0.08));
@@ -64,11 +65,10 @@
       align-items:center;
       justify-content:center;
       cursor:pointer;
-      transition:transform .12s ease;
+      transition:transform .12s ease, opacity .12s ease;
     }
     .big-play .btn:hover{ transform: scale(1.04); }
 
-    /* controls */
     .controls {
       display:flex;
       gap:12px;
@@ -102,40 +102,45 @@
       text-align:center;
     }
 
-    input[type="range"]{
-      -webkit-appearance:none;
-      background:transparent;
-      height:28px;
-    }
-
-    /* Progress bar styling */
-    .progress{
-      width:100%;
+    /* Volume slider (visible line + thumb) */
+    .volume {
       display:flex;
       align-items:center;
       gap:8px;
-    }
-    input[type="range"].progress-range{
-      width:100%;
-      height:6px;
-      border-radius:4px;
-      background:linear-gradient(90deg,var(--accent),#7dd3fc);
-      outline:none;
-      appearance:none;
-    }
-    input[type="range"]::-webkit-slider-thumb{
-      -webkit-appearance:none;
-      width:14px;height:14px;border-radius:50%;background:white;box-shadow:0 2px 6px rgba(0,0,0,0.4);
-      margin-top:-4px;
+      user-select:none;
     }
 
-    /* volume */
-    .volume {
-      display:flex;align-items:center;gap:8px;
-    }
+    /* Using 0-100 range for more natural UI handling */
     input[type="range"].vol-range{
-      width:110px;
+      -webkit-appearance:none;
+      appearance:none;
+      width:140px;
       height:6px;
+      border-radius:999px;
+      background: linear-gradient(90deg, var(--accent) 50%, rgba(255,255,255,0.14) 50%);
+      outline:none;
+      transition: background 120ms linear;
+    }
+
+    /* thumb */
+    input[type="range"].vol-range::-webkit-slider-thumb{
+      -webkit-appearance:none;
+      width:var(--thumb-size);
+      height:var(--thumb-size);
+      border-radius:50%;
+      background:white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+      margin-top: -5px; /* centers thumb on track */
+      cursor:pointer;
+    }
+    input[type="range"].vol-range::-moz-range-thumb{
+      width:var(--thumb-size);
+      height:var(--thumb-size);
+      border-radius:50%;
+      background:white;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.45);
+      border: none;
+      cursor:pointer;
     }
 
     /* small responsive tweaks */
@@ -143,67 +148,58 @@
       .left{min-width:0}
       .right{min-width:0}
       .time{display:none}
-      input[type="range"].vol-range{ width:70px; }
+      input[type="range"].vol-range{ width:90px; }
       .big-play .btn{ width:64px;height:64px }
     }
+
+    /* small icon size */
+    .icon-sm { width:18px; height:18px; display:block; }
   </style>
 </head>
 <body>
   <div class="player" id="player">
     <div class="video-wrap" id="videoWrap">
-      <!-- native video element -->
       <video id="video" preload="metadata" tabindex="0">
         <source src="video.mp4" type="video/mp4">
         Your browser does not support the video element.
       </video>
 
-      <!-- large center play button overlay -->
-      <div class="big-play" id="bigPlayOverlay">
+      <div class="big-play" id="bigPlayOverlay" aria-hidden="false">
         <button class="btn" id="bigPlayBtn" title="Play" aria-label="Play" type="button">
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
             <path d="M5 3v18l15-9L5 3z" fill="currentColor"/>
           </svg>
         </button>
       </div>
     </div>
 
-    <!-- Controls -->
-    <div class="controls">
+    <div class="controls" role="group" aria-label="Video controls">
       <div class="left">
         <button class="control-btn" id="playBtn" aria-pressed="false" title="Play / Pause">
-          <svg id="playIcon" width="20" height="20" viewBox="0 0 24 24" fill="none">
-            <path d="M5 3v18l15-9L5 3z" fill="currentColor"/>
-          </svg>
-          <svg id="pauseIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" style="display:none">
-            <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="currentColor"/>
-          </svg>
+          <svg id="playIcon" class="icon-sm" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 3v18l15-9L5 3z" fill="currentColor"/></svg>
+          <svg id="pauseIcon" class="icon-sm" viewBox="0 0 24 24" fill="none" style="display:none" aria-hidden="true"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="currentColor"/></svg>
         </button>
 
-        <div class="volume">
-          <button class="control-btn" id="muteBtn" title="Mute/Unmute" aria-pressed="false">
-            <svg id="volOn" width="18" height="18" viewBox="0 0 24 24" fill="none">
-              <path d="M3 10v4h4l5 5V5L7 10H3z" fill="currentColor"/>
-            </svg>
-            <svg id="volOff" width="18" height="18" viewBox="0 0 24 24" fill="none" style="display:none">
-              <path d="M16.5 12c0-1.77-.77-3.37-1.98-4.47l1.43-1.43C18.07 7.91 19 9.9 19 12s-.93 4.09-2.05 5.9l-1.43-1.43c1.21-1.1 1.98-2.7 1.98-4.47zM3 10v4h4l5 5V5L7 10H3z" fill="currentColor"/>
-            </svg>
+        <div class="volume" aria-hidden="false">
+          <button class="control-btn" id="muteBtn" title="Mute/Unmute" aria-pressed="false" aria-label="Mute">
+            <!-- two-layer icon: show/hide via JS -->
+            <svg id="volOn" class="icon-sm" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 10v4h4l5 5V5L7 10H3z" fill="currentColor"/></svg>
+            <svg id="volOff" class="icon-sm" viewBox="0 0 24 24" fill="none" style="display:none" aria-hidden="true"><path d="M16.5 12c0-1.77-.77-3.37-1.98-4.47l1.43-1.43C18.07 7.91 19 9.9 19 12s-.93 4.09-2.05 5.9l-1.43-1.43c1.21-1.1 1.98-2.7 1.98-4.47zM3 10v4h4l5 5V5L7 10H3z" fill="currentColor"/></svg>
           </button>
-          <input aria-label="Volume" id="volume" class="vol-range" type="range" min="0" max="1" step="0.01" value="1">
+
+          <!-- volume range: 0..100 for easy UI handling -->
+          <input aria-label="Volume" id="volume" class="vol-range" type="range" min="0" max="100" step="1" value="100">
         </div>
       </div>
 
       <div class="middle">
-        <div class="progress">
-          <input aria-label="Seek" id="progress" class="progress-range" type="range" min="0" max="100" step="0.05" value="0">
-        </div>
+        <!-- placeholder for progress, kept minimal -->
       </div>
 
       <div class="right">
-        <div class="time" id="time">0:00 / 0:00</div>
-        <button class="control-btn" id="fsBtn" title="Fullscreen (f)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
-            <path d="M7 14H5v5h5v-2H7v-3zM19 5h-5v2h3v3h2V5zM7 5v3h2V7h3V5H7zM14 19v-2h3v-3h2v5h-5z" fill="currentColor"/>
-          </svg>
+        <div class="time" aria-live="off" id="time">0:00 / 0:00</div>
+        <button class="control-btn" id="fsBtn" title="Fullscreen (f)" aria-label="Fullscreen">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M7 14H5v5h5v-2H7v-3zM19 5h-5v2h3v3h2V5zM7 5v3h2V7h3V5H7zM14 19v-2h3v-3h2v5h-5z" fill="currentColor"/></svg>
         </button>
       </div>
     </div>
@@ -216,15 +212,15 @@
     const bigPlayOverlay = document.getElementById('bigPlayOverlay');
     const playIcon = document.getElementById('playIcon');
     const pauseIcon = document.getElementById('pauseIcon');
-    const progress = document.getElementById('progress');
-    const timeLabel = document.getElementById('time');
-    const volume = document.getElementById('volume');
+    const volumeSlider = document.getElementById('volume');
     const muteBtn = document.getElementById('muteBtn');
     const volOn = document.getElementById('volOn');
     const volOff = document.getElementById('volOff');
     const fsBtn = document.getElementById('fsBtn');
+    const timeLabel = document.getElementById('time');
     const player = document.getElementById('player');
 
+    /* ---------- Utilities ---------- */
     function formatTime(seconds){
       seconds = Math.floor(seconds || 0);
       const m = Math.floor(seconds/60);
@@ -232,95 +228,163 @@
       return `${m}:${String(s).padStart(2,'0')}`;
     }
 
+    function setVolumeSliderBackground(valPercent){
+      // visually fill left part of range with accent color
+      volumeSlider.style.background = `linear-gradient(90deg, var(--accent) ${valPercent}%, rgba(255,255,255,0.12) ${valPercent}%)`;
+    }
+
+    /* ---------- Play / Pause UI ---------- */
     function updatePlayUI(){
       if (video.paused || video.ended){
         playIcon.style.display = '';
         pauseIcon.style.display = 'none';
         playBtn.setAttribute('aria-pressed','false');
-        bigPlayOverlay.style.display = "flex"; // show overlay
+        // show the big overlay when paused or ended
+        bigPlayOverlay.style.display = 'flex';
       } else {
         playIcon.style.display = 'none';
         pauseIcon.style.display = '';
         playBtn.setAttribute('aria-pressed','true');
-        bigPlayOverlay.style.display = "none"; // hide overlay
+        bigPlayOverlay.style.display = 'none';
       }
     }
 
     function togglePlay(){
-      if (video.paused || video.ended) {
-        video.play();
+      if (video.paused || video.ended){
+        video.play().catch(()=>{/* ignore autoplay-block errors */});
       } else {
         video.pause();
       }
+      // updatePlayUI will be triggered by play/pause events, but call now to reduce jank
       updatePlayUI();
     }
 
     playBtn.addEventListener('click', togglePlay);
-    bigPlayBtn.addEventListener('click', togglePlay);
+    bigPlayBtn.addEventListener('click', () => {
+      video.play().catch(()=>{});
+      updatePlayUI();
+    });
     video.addEventListener('play', updatePlayUI);
     video.addEventListener('pause', updatePlayUI);
     video.addEventListener('ended', updatePlayUI);
 
-    function syncProgress(){
+    /* ---------- Time / Progress (minimal) ---------- */
+    function syncTime(){
       if (video.duration && isFinite(video.duration)){
-        const pct = (video.currentTime / video.duration) * 100;
-        progress.value = pct;
         timeLabel.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
+      } else {
+        timeLabel.textContent = `${formatTime(video.currentTime)} / 0:00`;
       }
     }
-    video.addEventListener('timeupdate', syncProgress);
-    video.addEventListener('loadedmetadata', syncProgress);
+    video.addEventListener('timeupdate', syncTime);
+    video.addEventListener('loadedmetadata', syncTime);
 
-    progress.addEventListener('input', (e)=>{
-      if (video.duration){
-        const pct = parseFloat(e.target.value);
-        video.currentTime = (pct/100) * video.duration;
+    /* ---------- Volume handling (works reliably) ---------- */
+    // We'll use a 0..100 slider. Convert to 0..1 for video.volume
+    function applyVolumeFromSlider(){
+      const percent = Number(volumeSlider.value); // 0..100
+      const vol = Math.min(1, Math.max(0, percent / 100));
+      video.volume = vol;
+      // if user sets slider to 0, mute; otherwise unmute
+      video.muted = (vol === 0);
+      // update icons
+      if (video.muted || vol === 0){
+        volOn.style.display = 'none';
+        volOff.style.display = '';
+        muteBtn.setAttribute('aria-pressed','true');
+      } else {
+        volOn.style.display = '';
+        volOff.style.display = 'none';
+        muteBtn.setAttribute('aria-pressed','false');
+      }
+      setVolumeSliderBackground(percent);
+    }
+
+    // Input event: live update while dragging
+    volumeSlider.addEventListener('input', () => {
+      applyVolumeFromSlider();
+    });
+
+    // When user clicks mute button: toggle mute, and sync slider UI
+    muteBtn.addEventListener('click', () => {
+      video.muted = !video.muted;
+      if (video.muted){
+        // store previous slider value in dataset so we can restore
+        muteBtn.dataset.prev = volumeSlider.value;
+        volumeSlider.value = 0;
+        volOn.style.display = 'none';
+        volOff.style.display = '';
+        muteBtn.setAttribute('aria-pressed','true');
+        setVolumeSliderBackground(0);
+      } else {
+        const prev = (muteBtn.dataset.prev !== undefined) ? Number(muteBtn.dataset.prev) : 60;
+        // restore sensible value if previous is 0 or missing
+        const restore = (prev === 0 || isNaN(prev)) ? 60 : prev;
+        volumeSlider.value = restore;
+        video.volume = restore / 100;
+        volOn.style.display = '';
+        volOff.style.display = 'none';
+        muteBtn.setAttribute('aria-pressed','false');
+        setVolumeSliderBackground(restore);
       }
     });
 
-    volume.addEventListener('input', (e)=>{
-      video.volume = parseFloat(e.target.value);
-      if (video.volume <= 0) {
-        video.muted = true;
+    // Keep volume slider in sync if code changes video.volume elsewhere
+    function syncSliderToVideo(){
+      const volPercent = Math.round((video.volume ?? 1) * 100);
+      volumeSlider.value = volPercent;
+      setVolumeSliderBackground(volPercent);
+      if (video.muted || volPercent === 0){
         volOn.style.display = 'none';
         volOff.style.display = '';
       } else {
-        video.muted = false;
         volOn.style.display = '';
         volOff.style.display = 'none';
       }
-    });
+    }
+    // Update slider when metadata loads and at init
+    video.addEventListener('volumechange', syncSliderToVideo);
 
-    muteBtn.addEventListener('click', ()=>{
-      video.muted = !video.muted;
-      if (video.muted){
-        volOn.style.display = 'none'; volOff.style.display = '';
-        volume.value = 0;
-      } else {
-        volOn.style.display = ''; volOff.style.display = 'none';
-        if (video.volume === 0) { video.volume = 0.6; volume.value = 0.6; }
-      }
-    });
-
+    /* ---------- Fullscreen ---------- */
     async function toggleFullscreen(){
-      if (!document.fullscreenElement){
-        await player.requestFullscreen?.();
+      if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement){
+        const el = player;
+        if (el.requestFullscreen) await el.requestFullscreen();
+        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+        else if (el.msRequestFullscreen) el.msRequestFullscreen();
       } else {
-        await document.exitFullscreen?.();
+        if (document.exitFullscreen) await document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+        else if (document.msExitFullscreen) document.msExitFullscreen();
       }
     }
     fsBtn.addEventListener('click', toggleFullscreen);
 
-    window.addEventListener('keydown', (e)=>{
+    /* ---------- Keyboard shortcuts ---------- */
+    window.addEventListener('keydown', (e) => {
       if (['INPUT','TEXTAREA','SELECT','BUTTON'].includes(document.activeElement.tagName)) return;
       if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
       if (e.key === 'f' || e.key === 'F') toggleFullscreen();
+      if (e.key === 'ArrowUp') { e.preventDefault(); volumeSlider.value = Math.min(100, Number(volumeSlider.value) + 5); applyVolumeFromSlider(); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); volumeSlider.value = Math.max(0, Number(volumeSlider.value) - 5); applyVolumeFromSlider(); }
     });
 
+    /* ---------- Init ---------- */
     (function init(){
-      volume.value = video.volume ?? 1;
+      // initialize slider to video's default volume (or 1)
+      const initPercent = Math.round((video.volume ?? 1) * 100);
+      volumeSlider.value = initPercent;
+      setVolumeSliderBackground(initPercent);
+      // ensure UI matches muted state
+      if (video.muted || initPercent === 0){
+        volOn.style.display = 'none';
+        volOff.style.display = '';
+      } else {
+        volOn.style.display = '';
+        volOff.style.display = 'none';
+      }
       updatePlayUI();
-      syncProgress();
+      syncTime();
     })();
   </script>
 </body>
