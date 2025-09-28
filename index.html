@@ -52,10 +52,8 @@
       display:flex;
       align-items:center;
       justify-content:center;
-      pointer-events:none; /* hide from clicks; we use controls below */
     }
     .big-play .btn {
-      pointer-events:auto;
       background: linear-gradient(90deg, rgba(96,165,250,0.12), rgba(96,165,250,0.08));
       border:1px solid rgba(255,255,255,0.06);
       backdrop-filter: blur(6px);
@@ -156,15 +154,13 @@
       <!-- native video element -->
       <video id="video" preload="metadata" tabindex="0">
         <source src="video.mp4" type="video/mp4">
-        <!-- fallback -->
         Your browser does not support the video element.
       </video>
 
       <!-- large center play button overlay -->
-      <div class="big-play" aria-hidden="true">
+      <div class="big-play" id="bigPlayOverlay">
         <button class="btn" id="bigPlayBtn" title="Play" aria-label="Play" type="button">
-          <!-- Play SVG -->
-          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none">
             <path d="M5 3v18l15-9L5 3z" fill="currentColor"/>
           </svg>
         </button>
@@ -172,18 +168,18 @@
     </div>
 
     <!-- Controls -->
-    <div class="controls" role="group" aria-label="Video controls">
+    <div class="controls">
       <div class="left">
         <button class="control-btn" id="playBtn" aria-pressed="false" title="Play / Pause">
-          <svg id="playIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <svg id="playIcon" width="20" height="20" viewBox="0 0 24 24" fill="none">
             <path d="M5 3v18l15-9L5 3z" fill="currentColor"/>
           </svg>
-          <svg id="pauseIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" style="display:none" aria-hidden="true">
+          <svg id="pauseIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" style="display:none">
             <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="currentColor"/>
           </svg>
         </button>
 
-        <div class="volume" aria-hidden="false">
+        <div class="volume">
           <button class="control-btn" id="muteBtn" title="Mute/Unmute" aria-pressed="false">
             <svg id="volOn" width="18" height="18" viewBox="0 0 24 24" fill="none">
               <path d="M3 10v4h4l5 5V5L7 10H3z" fill="currentColor"/>
@@ -197,15 +193,15 @@
       </div>
 
       <div class="middle">
-        <div class="progress" style="align-items:center">
+        <div class="progress">
           <input aria-label="Seek" id="progress" class="progress-range" type="range" min="0" max="100" step="0.05" value="0">
         </div>
       </div>
 
       <div class="right">
-        <div class="time" aria-live="off" id="time">0:00 / 0:00</div>
+        <div class="time" id="time">0:00 / 0:00</div>
         <button class="control-btn" id="fsBtn" title="Fullscreen (f)">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
             <path d="M7 14H5v5h5v-2H7v-3zM19 5h-5v2h3v3h2V5zM7 5v3h2V7h3V5H7zM14 19v-2h3v-3h2v5h-5z" fill="currentColor"/>
           </svg>
         </button>
@@ -214,10 +210,10 @@
   </div>
 
   <script>
-    // Element refs
     const video = document.getElementById('video');
     const playBtn = document.getElementById('playBtn');
     const bigPlayBtn = document.getElementById('bigPlayBtn');
+    const bigPlayOverlay = document.getElementById('bigPlayOverlay');
     const playIcon = document.getElementById('playIcon');
     const pauseIcon = document.getElementById('pauseIcon');
     const progress = document.getElementById('progress');
@@ -228,9 +224,7 @@
     const volOff = document.getElementById('volOff');
     const fsBtn = document.getElementById('fsBtn');
     const player = document.getElementById('player');
-    const videoWrap = document.getElementById('videoWrap');
 
-    // UTILS
     function formatTime(seconds){
       seconds = Math.floor(seconds || 0);
       const m = Math.floor(seconds/60);
@@ -238,155 +232,93 @@
       return `${m}:${String(s).padStart(2,'0')}`;
     }
 
-    // PLAY / PAUSE
     function updatePlayUI(){
       if (video.paused || video.ended){
         playIcon.style.display = '';
         pauseIcon.style.display = 'none';
         playBtn.setAttribute('aria-pressed','false');
-        bigPlayBtn.title = "Play";
+        bigPlayOverlay.style.display = "flex"; // show overlay
       } else {
         playIcon.style.display = 'none';
         pauseIcon.style.display = '';
         playBtn.setAttribute('aria-pressed','true');
-        bigPlayBtn.title = "Pause";
+        bigPlayOverlay.style.display = "none"; // hide overlay
       }
     }
+
     function togglePlay(){
       if (video.paused || video.ended) {
-        video.play().catch(()=>{/* autoplay blocked or other error */});
+        video.play();
       } else {
         video.pause();
       }
       updatePlayUI();
     }
+
     playBtn.addEventListener('click', togglePlay);
     bigPlayBtn.addEventListener('click', togglePlay);
     video.addEventListener('play', updatePlayUI);
     video.addEventListener('pause', updatePlayUI);
     video.addEventListener('ended', updatePlayUI);
 
-    // PROGRESS
     function syncProgress(){
       if (video.duration && isFinite(video.duration)){
         const pct = (video.currentTime / video.duration) * 100;
         progress.value = pct;
         timeLabel.textContent = `${formatTime(video.currentTime)} / ${formatTime(video.duration)}`;
-      } else {
-        progress.value = 0;
-        timeLabel.textContent = `${formatTime(video.currentTime)} / 0:00`;
       }
     }
     video.addEventListener('timeupdate', syncProgress);
     video.addEventListener('loadedmetadata', syncProgress);
-    video.addEventListener('progress', syncProgress);
 
-    // Seeking: on input -> show scrub, on change -> commit
-    let isSeeking = false;
     progress.addEventListener('input', (e)=>{
-      isSeeking = true;
-      // set display time while dragging
-      const pct = parseFloat(e.target.value);
-      if (video.duration && isFinite(video.duration)){
-        const newTime = (pct/100) * video.duration;
-        timeLabel.textContent = `${formatTime(newTime)} / ${formatTime(video.duration)}`;
-      }
-    });
-    progress.addEventListener('change', (e)=>{
-      if (video.duration && isFinite(video.duration)){
+      if (video.duration){
         const pct = parseFloat(e.target.value);
         video.currentTime = (pct/100) * video.duration;
       }
-      isSeeking = false;
     });
 
-    // VOLUME
     volume.addEventListener('input', (e)=>{
       video.volume = parseFloat(e.target.value);
       if (video.volume <= 0) {
         video.muted = true;
-        muteBtn.setAttribute('aria-pressed', 'true');
         volOn.style.display = 'none';
         volOff.style.display = '';
       } else {
         video.muted = false;
-        muteBtn.setAttribute('aria-pressed', 'false');
         volOn.style.display = '';
         volOff.style.display = 'none';
       }
     });
 
-    // MUTE
     muteBtn.addEventListener('click', ()=>{
       video.muted = !video.muted;
-      if (video.muted) {
-        muteBtn.setAttribute('aria-pressed','true');
-        volOn.style.display = 'none';
-        volOff.style.display = '';
+      if (video.muted){
+        volOn.style.display = 'none'; volOff.style.display = '';
         volume.value = 0;
       } else {
-        muteBtn.setAttribute('aria-pressed','false');
-        volOn.style.display = '';
-        volOff.style.display = 'none';
-        // if volume was 0, restore to a reasonable default
+        volOn.style.display = ''; volOff.style.display = 'none';
         if (video.volume === 0) { video.volume = 0.6; volume.value = 0.6; }
       }
     });
 
-    // FULLSCREEN (toggle)
     async function toggleFullscreen(){
-      if (!document.fullscreenElement && !document.webkitFullscreenElement && !document.msFullscreenElement){
-        const el = player;
-        if (el.requestFullscreen) await el.requestFullscreen();
-        else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
-        else if (el.msRequestFullscreen) el.msRequestFullscreen();
+      if (!document.fullscreenElement){
+        await player.requestFullscreen?.();
       } else {
-        if (document.exitFullscreen) await document.exitFullscreen();
-        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
-        else if (document.msExitFullscreen) document.msExitFullscreen();
+        await document.exitFullscreen?.();
       }
     }
     fsBtn.addEventListener('click', toggleFullscreen);
 
-    // Keyboard shortcuts (space, f, arrow up/down)
     window.addEventListener('keydown', (e)=>{
-      if (document.activeElement && ['INPUT','TEXTAREA','SELECT','BUTTON'].includes(document.activeElement.tagName)) {
-        // avoid interfering with typing / controls
-        return;
-      }
-      if (e.code === 'Space') {
-        e.preventDefault();
-        togglePlay();
-      } else if (e.key === 'f' || e.key === 'F') {
-        toggleFullscreen();
-      } else if (e.key === 'ArrowUp'){
-        e.preventDefault();
-        const newVol = Math.min(1, Math.round((video.volume + 0.05)*100)/100);
-        video.volume = newVol;
-        volume.value = newVol;
-        if (newVol > 0) { video.muted = false; volOn.style.display=''; volOff.style.display='none'; muteBtn.setAttribute('aria-pressed','false'); }
-      } else if (e.key === 'ArrowDown'){
-        e.preventDefault();
-        const newVol = Math.max(0, Math.round((video.volume - 0.05)*100)/100);
-        video.volume = newVol;
-        volume.value = newVol;
-        if (newVol === 0) { video.muted = true; volOn.style.display='none'; volOff.style.display=''; muteBtn.setAttribute('aria-pressed','true'); }
-      } else if (e.key === 'ArrowRight'){
-        // small seek
-        video.currentTime = Math.min(video.duration || Infinity, video.currentTime + 5);
-      } else if (e.key === 'ArrowLeft'){
-        video.currentTime = Math.max(0, video.currentTime - 5);
-      }
+      if (['INPUT','TEXTAREA','SELECT','BUTTON'].includes(document.activeElement.tagName)) return;
+      if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+      if (e.key === 'f' || e.key === 'F') toggleFullscreen();
     });
 
-    // Initial UI sync
     (function init(){
       volume.value = video.volume ?? 1;
-      if (video.muted || video.volume === 0) {
-        volOn.style.display = 'none'; volOff.style.display = '';
-      } else {
-        volOn.style.display = ''; volOff.style.display = 'none';
-      }
       updatePlayUI();
       syncProgress();
     })();
